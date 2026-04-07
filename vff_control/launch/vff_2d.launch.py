@@ -69,3 +69,42 @@ def generate_launch_description():
             ]
         ),
     ])
+
+
+# -----------------------------------------------------------------------------
+# Ejecucion individual de nodos (en terminales separadas)
+# -----------------------------------------------------------------------------
+"""
+1) Obstacle detector (vector repulsivo)
+ros2 run vff_control obstacle_detector_node --ros-args \
+  -p min_distance:=0.5 \
+  -p base_frame:=base_footprint \
+  -r input_laser:=/scan_raw
+
+2) Adaptador YOLO -> Detection2D (necesario para /detections_2d)
+ros2 run camera yolo_detection_node --ros-args \
+    -r input_detection:=/yolo/detections \
+    -r output_detection_2d:=/detections_2d
+
+3) YOLO class detector 2D (vector atractivo)
+ros2 run vff_control yolo_class_detector_node_2d --ros-args \
+  -p target_class:=person \
+  -p base_frame:=base_footprint \
+  -r input_detection_2d:=/detections_2d \
+    -r input_image:=/image_raw \
+    -r camera_info:=/camera_info
+
+4) VFF controller (cmd_vel)
+ros2 run vff_control vff_controller_node --ros-args \
+  -p max_linear_speed:=0.1 \
+  -p max_angular_speed:=1.0 \
+  -p repulsive_gain_factor:=0.3 \
+  -p repulsive_influence_distance:=0.5 \
+  -p stay_distance:=-1.0 \
+  -r vel:=/cmd_vel
+
+5) Verificacion rapida del vector atractivo
+ros2 topic echo /attractive_vector
+"""
+# Nota: tambien debes lanzar YOLO y el adaptador de detecciones 2D para publicar
+# /detections_2d antes de usar yolo_class_detector_node_2d.

@@ -29,7 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vff_controller_node = vff_control.vff_controller_node:main',
-            #'obstacle_detector_node = vff_control.obstacle_detector_node:main',
+            'obstacle_detector_node = vff_control.obstacle_detector_node:main',
             'yolo_class_detector_node_2d = vff_control.yolo_class_detector_node_2d:main',
             'yolo_detection_node_2d = camera.yolo_detection_node:main',
         ],

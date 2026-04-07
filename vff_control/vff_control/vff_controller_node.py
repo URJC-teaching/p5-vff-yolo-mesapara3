@@ -51,14 +51,14 @@ class VFFControllerNode(Node):
             self.attractive_callback,
             10
         )
-
+        """
         self.repulsive_sub = self.create_subscription(
             Vector3,
             'repulsive_vector',
             self.repulsive_callback,
             10
         )
-
+    """
         # Publisher
         self.cmd_pub = self.create_publisher(Twist, 'vel', 10)
 
@@ -71,13 +71,14 @@ class VFFControllerNode(Node):
 
     def attractive_callback(self, msg: Vector3):
         self.attractive_vec = msg
+        self.state_ts = self.get_clock().now()
         self.get_logger().debug(f'Received Attractive vector: x={msg.x:.2f}, y={msg.y:.2f}. Magnitude={math.hypot(msg.x, msg.y):.2f}. Angle={math.degrees(math.atan2(msg.y, msg.x)):.2f} deg')
-        self.compute_and_publish_cmd()
+        self.compute_cmd()
 
     def repulsive_callback(self, msg: Vector3):
         self.repulsive_vec = msg
         self.get_logger().debug(f'Received Repulsive vector: x={msg.x:.2f}, y={msg.y:.2f}. Magnitude={math.hypot(msg.x, msg.y):.2f}. Angle={math.degrees(math.atan2(msg.y, msg.x)):.2f} deg')
-        self.compute_and_publish_cmd()
+        self.compute_cmd()
 
     def compute_cmd(self):
 
@@ -160,23 +161,25 @@ class VFFControllerNode(Node):
     def control_cycle(self):
         out_vel = Twist()
         
+        target_detected = (self.get_clock().now() - self.state_ts) < rclpy.duration.Duration(seconds=1.0) 
+        
+
         if self.state == State.SEARCH:
             # Girar para buscar el objetivo
             out_vel.angular.z = self.max_angular_speed * 0.5
 
-            if self.attractive_vec.x != 0.0 or self.attractive_vec.y != 0.0:
-                self.go_state(State.FOLLOW)
-                self.state_ts = self.get_clock().now()
+            if target_detected:
+                self.state = State.FOLLOW
                 self.get_logger().info('SEARCH -> FOLLOW (Objetivo detectado)')
 
         elif self.state == State.FOLLOW:
             # Seguir al objetivo
             out_vel = self.cmd_vels
-            if self.attractive_vec.x == 0.0 and self.attractive_vec.y == 0.0:
-                # Si no se detecta el objetivo, volver a SEARCH
-                if self.get_clock().now() - self.state_ts > rclpy.duration.Duration(seconds=1.0):
-                    self.go_state(State.SEARCH)
-                    self.get_logger().info('FOLLOW -> SEARCH (Objetivo perdido)')
+            
+            if not target_detected:
+                self.state = State.SEARCH
+                self.cmd_vels = Twist()
+                self.get_logger().info('FOLLOW -> SEARCH (Objetivo perdido)')
                     
         self.cmd_pub.publish(out_vel)
 
