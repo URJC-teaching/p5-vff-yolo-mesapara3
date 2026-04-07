@@ -34,6 +34,8 @@ Para que el sistema funcione, los nodos deben lanzarse en el siguiente orden par
 ### 1. Cámara Física
 Lanza el driver de tu webcam o cámara RGBD:
 ```bash
+ros2 run rqt_image_view rqt_image_view
+
 ros2 run v4l2_camera v4l2_camera_node --ros-args -p video_device:="/dev/video0" -p image_size:="[640,480]"
 ```
 

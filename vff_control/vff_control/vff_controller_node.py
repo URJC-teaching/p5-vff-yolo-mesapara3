@@ -14,10 +14,22 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Vector3, Twist
 import math
+from enum import IntEnum
+
+
+class State(IntEnum):
+    SEARCH = 0
+    FOLLOW = 1
 
 class VFFControllerNode(Node):
     def __init__(self):
         super().__init__('vff_controller_node')
+        
+        # --- FSM ---
+        self.state = State.SEARCH
+        self.state_ts = self.get_clock().now()
+        
+        self.cmd_vels = Twist()
 
         # Parameters
         self.declare_parameter('max_linear_speed', 0.3)
@@ -53,6 +65,9 @@ class VFFControllerNode(Node):
         # Internal state
         self.attractive_vec = Vector3()
         self.repulsive_vec = Vector3()
+        
+        # --- Timer de control ---
+        self.timer = self.create_timer(0.05, self.control_cycle)
 
     def attractive_callback(self, msg: Vector3):
         self.attractive_vec = msg
@@ -64,7 +79,7 @@ class VFFControllerNode(Node):
         self.get_logger().debug(f'Received Repulsive vector: x={msg.x:.2f}, y={msg.y:.2f}. Magnitude={math.hypot(msg.x, msg.y):.2f}. Angle={math.degrees(math.atan2(msg.y, msg.x)):.2f} deg')
         self.compute_and_publish_cmd()
 
-    def compute_and_publish_cmd(self):
+    def compute_cmd(self):
 
         if self.stay_distance > 0:
             distance = math.hypot(self.attractive_vec.x, self.attractive_vec.y)
@@ -115,7 +130,8 @@ class VFFControllerNode(Node):
         # cmd.angular.z = max(min(angle, self.max_angular_speed), -self.max_angular_speed)
         cmd.angular.z = rotation_dir * min(self.max_angular_speed, abs(angle))
 
-        self.cmd_pub.publish(cmd)
+        self.cmd_vels = cmd
+        #self.cmd_pub.publish(cmd)
         self.get_logger().debug(f'Cmd: linear={cmd.linear.x:.2f}, angular={cmd.angular.z:.2f}')
 
         # This hack is needed when the obstacle is detected once, but then not detected anymore
@@ -137,6 +153,32 @@ class VFFControllerNode(Node):
         # Reset vectors after publishing
         self.attractive_vec = Vector3()
         self.repulsive_vec = Vector3()
+        
+    # ===================================================
+    #            CICLO DE CONTROL (FSM)
+    # ===================================================
+    def control_cycle(self):
+        out_vel = Twist()
+        
+        if self.state == State.SEARCH:
+            # Girar para buscar el objetivo
+            out_vel.angular.z = self.max_angular_speed * 0.5
+
+            if self.attractive_vec.x != 0.0 or self.attractive_vec.y != 0.0:
+                self.go_state(State.FOLLOW)
+                self.state_ts = self.get_clock().now()
+                self.get_logger().info('SEARCH -> FOLLOW (Objetivo detectado)')
+
+        elif self.state == State.FOLLOW:
+            # Seguir al objetivo
+            out_vel = self.cmd_vels
+            if self.attractive_vec.x == 0.0 and self.attractive_vec.y == 0.0:
+                # Si no se detecta el objetivo, volver a SEARCH
+                if self.get_clock().now() - self.state_ts > rclpy.duration.Duration(seconds=1.0):
+                    self.go_state(State.SEARCH)
+                    self.get_logger().info('FOLLOW -> SEARCH (Objetivo perdido)')
+                    
+        self.cmd_pub.publish(out_vel)
 
 def main(args=None):
     
